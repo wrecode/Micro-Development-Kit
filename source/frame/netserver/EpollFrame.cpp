@@ -57,7 +57,7 @@ void EpollFrame::NewConnectMonitor()
 {
 #ifndef WIN32
 	int nCount = MAXPOLLSIZE;
-	epoll_event *events = new epoll_event[nCount];	//epollÊÂ¼ş
+	epoll_event *events = new epoll_event[nCount];	//epolläº‹ä»¶
 	int i = 0;
 	Socket listenSock;
 	Socket clientSock;
@@ -102,22 +102,22 @@ void EpollFrame::DataMonitor()
 {
 #ifndef WIN32
 	int nCount = MAXPOLLSIZE;
-	epoll_event *events = new epoll_event[nCount];	//epollÊÂ¼ş
+	epoll_event *events = new epoll_event[nCount];	//epolläº‹ä»¶
 	int i = 0;
 	map<int64,int> ioList;
 	map<int64,int>::iterator it;
 	bool ret = false;
 	while ( !m_stop )
 	{
-		//Ã»ÓĞ¿ÉioµÄsocketÔòµÈ´ıĞÂ¿ÉioµÄsocket
-		//·ñÔò¼ì²éÊÇ·ñÓĞĞÂµÄ¿ÉioµÄsocket£¬ÓĞÔòÈ¡³ö¼ÓÈëµ½ioListÖĞ£¬Ã»ÓĞÒ²²»µÈ´ı
-		//¼ÌĞø½øĞĞioListÖĞµÄsocket½øĞĞio²Ù×÷
+		//æ²¡æœ‰å¯ioçš„socketåˆ™ç­‰å¾…æ–°å¯ioçš„socket
+		//å¦åˆ™æ£€æŸ¥æ˜¯å¦æœ‰æ–°çš„å¯ioçš„socketï¼Œæœ‰åˆ™å–å‡ºåŠ å…¥åˆ°ioListä¸­ï¼Œæ²¡æœ‰ä¹Ÿä¸ç­‰å¾…
+		//ç»§ç»­è¿›è¡ŒioListä¸­çš„socketè¿›è¡Œioæ“ä½œ
 		nCount = MAXPOLLSIZE;
 		if ( 0 >= ioList.size() ) ret = ((EpollMonitor*)m_pNetMonitor)->WaitData( events, nCount, -1 );
 		else ret = ((EpollMonitor*)m_pNetMonitor)->WaitData( events, nCount, 0 );
 		if ( !ret ) break;
 
-		//¼ÓÈëµ½ioListÖĞ
+		//åŠ å…¥åˆ°ioListä¸­
 		for ( i = 0; i < nCount; i++ )
 		{
 			if ( ((EpollMonitor*)m_pNetMonitor)->IsStop(events[i].data.u64) ) 
@@ -126,25 +126,25 @@ void EpollFrame::DataMonitor()
 				return;
 			}
 
-			//¶ÔÓÚrecv sendÔò¼ÓÈëµ½ioÁĞ±í£¬Í³Ò»µ÷¶È
+			//å¯¹äºrecv sendåˆ™åŠ å…¥åˆ°ioåˆ—è¡¨ï¼Œç»Ÿä¸€è°ƒåº¦
 			it = ioList.find(events[i].data.u64);
 			if ( it != ioList.end() ) continue;
-			ioList.insert(map<int64,int>::value_type(events[i].data.u64, 1) );//Ôö¼Ó¿ÉioµÄ¶ÔÏó
+			ioList.insert(map<int64,int>::value_type(static_cast<uint64_t>(events[i].data.u64), 1) );//å¢åŠ å¯ioçš„å¯¹è±¡
 		}
 		
-		//±éÀúioList£¬Ö´ĞĞ1´Îio
+		//éå†ioListï¼Œæ‰§è¡Œ1æ¬¡io
 		for ( it = ioList.begin(); it != ioList.end(); it++ )
 		{
-			if ( 1&it->second ) //¿É¶Á
+			if ( 1&it->second ) //å¯è¯»
 			{
-				if ( ok != OnData( it->first, 0, 0 ) ) //Êı¾İÒÑ¶ÁÍê»òÁ¬½ÓÒÑ¶Ï¿ª
+				if ( ok != OnData( it->first, 0, 0 ) ) //æ•°æ®å·²è¯»å®Œæˆ–è¿æ¥å·²æ–­å¼€
 				{
-					it->second = it->second&~1;//Çå³ıÊÂ¼ş
+					it->second = it->second&~1;//æ¸…é™¤äº‹ä»¶
 				}
 			}
 		}
 	
-		//½«²»¿ÉioµÄsocketÇå³ı
+		//å°†ä¸å¯ioçš„socketæ¸…é™¤
 		it = ioList.begin();
 		while (  it != ioList.end() ) 
 		{
@@ -164,22 +164,22 @@ void EpollFrame::SendAbleMonitor()
 {
 #ifndef WIN32
 	int nCount = MAXPOLLSIZE;
-	epoll_event *events = new epoll_event[nCount];	//epollÊÂ¼ş
+	epoll_event *events = new epoll_event[nCount];	//epolläº‹ä»¶
 	int i = 0;
 	map<int64,int> ioList;
 	map<int64,int>::iterator it;
 	bool ret = false;
 	while ( !m_stop )
 	{
-		//Ã»ÓĞ¿ÉioµÄsocketÔòµÈ´ıĞÂ¿ÉioµÄsocket
-		//·ñÔò¼ì²éÊÇ·ñÓĞĞÂµÄ¿ÉioµÄsocket£¬ÓĞÔòÈ¡³ö¼ÓÈëµ½ioListÖĞ£¬Ã»ÓĞÒ²²»µÈ´ı
-		//¼ÌĞø½øĞĞioListÖĞµÄsocket½øĞĞio²Ù×÷
+		//æ²¡æœ‰å¯ioçš„socketåˆ™ç­‰å¾…æ–°å¯ioçš„socket
+		//å¦åˆ™æ£€æŸ¥æ˜¯å¦æœ‰æ–°çš„å¯ioçš„socketï¼Œæœ‰åˆ™å–å‡ºåŠ å…¥åˆ°ioListä¸­ï¼Œæ²¡æœ‰ä¹Ÿä¸ç­‰å¾…
+		//ç»§ç»­è¿›è¡ŒioListä¸­çš„socketè¿›è¡Œioæ“ä½œ
 		nCount = MAXPOLLSIZE;
 		if ( 0 >= ioList.size() ) ret = ((EpollMonitor*)m_pNetMonitor)->WaitSendable( events, nCount, -1 );
 		else ret = ((EpollMonitor*)m_pNetMonitor)->WaitSendable( events, nCount, 0 );
 		if ( !ret ) break;
 
-		//¼ÓÈëµ½ioListÖĞ
+		//åŠ å…¥åˆ°ioListä¸­
 		for ( i = 0; i < nCount; i++ )
 		{
 			if ( ((EpollMonitor*)m_pNetMonitor)->IsStop(events[i].data.u64) ) 
@@ -188,25 +188,25 @@ void EpollFrame::SendAbleMonitor()
 				return;
 			}
 
-			//¶ÔÓÚrecv sendÔò¼ÓÈëµ½ioÁĞ±í£¬Í³Ò»µ÷¶È
+			//å¯¹äºrecv sendåˆ™åŠ å…¥åˆ°ioåˆ—è¡¨ï¼Œç»Ÿä¸€è°ƒåº¦
 			it = ioList.find(events[i].data.u64);
 			if ( it != ioList.end() ) continue;
-			ioList.insert(map<int64,int>::value_type(events[i].data.u64, 2) );//Ôö¼Ó¿ÉioµÄ¶ÔÏó
+			ioList.insert(map<int64,int>::value_type(static_cast<uint64_t>(events[i].data.u64), 2) );//å¢åŠ å¯ioçš„å¯¹è±¡
 		}
 
-		//±éÀúioList£¬Ö´ĞĞ1´Îio
+		//éå†ioListï¼Œæ‰§è¡Œ1æ¬¡io
 		for ( it = ioList.begin(); it != ioList.end(); it++ )
 		{
-			if ( 2&it->second ) //¿ÉĞ´
+			if ( 2&it->second ) //å¯å†™
 			{
-				if ( ok != OnSend( it->first, 0 ) )//Êı¾İÒÑ¾­·¢ËÍÍê£¬»òsocketÒÑ¾­¶Ï¿ª£¬»òsocket²»¿ÉĞ´
+				if ( ok != OnSend( it->first, 0 ) )//æ•°æ®å·²ç»å‘é€å®Œï¼Œæˆ–socketå·²ç»æ–­å¼€ï¼Œæˆ–socketä¸å¯å†™
 				{
-					it->second = it->second&~2;//Çå³ıÊÂ¼ş
+					it->second = it->second&~2;//æ¸…é™¤äº‹ä»¶
 				}
 			}
 		}
 
-		//½«²»¿ÉioµÄsocketÇå³ı
+		//å°†ä¸å¯ioçš„socketæ¸…é™¤
 		it = ioList.begin();
 		while (  it != ioList.end() ) 
 		{
@@ -227,7 +227,7 @@ connectState EpollFrame::RecvData( NetConnect *pConnect, char *pData, unsigned s
 	unsigned char* pWriteBuf = NULL;	
 	int nRecvLen = 0;
 	unsigned int nMaxRecvSize = 0;
-	//×î¶à½ÓÊÕ1MÊı¾İ£¬ÈÃ¸øÆäËüÁ¬½Ó½øĞĞio
+	//æœ€å¤šæ¥æ”¶1Mæ•°æ®ï¼Œè®©ç»™å…¶å®ƒè¿æ¥è¿›è¡Œio
 	while ( nMaxRecvSize < 1048576 )
 	{
 		pWriteBuf = pConnect->PrepareBuffer(BUFBLOCK_SIZE);
@@ -249,7 +249,7 @@ connectState EpollFrame::RecvData( NetConnect *pConnect, char *pData, unsigned s
 int EpollFrame::ListenPort(int port)
 {
 #ifndef WIN32
-	Socket listenSock;//¼àÌısocket
+	Socket listenSock;//ç›‘å¬socket
 	if ( !listenSock.Init( Socket::tcp ) ) 
 	{
 		printf( "listen %d error not create socket\n", port );
@@ -283,9 +283,9 @@ int EpollFrame::ListenPort(int port)
 connectState EpollFrame::SendData(NetConnect *pConnect, unsigned short uSize)
 {
 #ifndef WIN32
-	connectState cs = wait_send;//Ä¬ÈÏÎªµÈ´ı×´Ì¬
+	connectState cs = wait_send;//é»˜è®¤ä¸ºç­‰å¾…çŠ¶æ€
 	//////////////////////////////////////////////////////////////////////////
-	//Ö´ĞĞ·¢ËÍ
+	//æ‰§è¡Œå‘é€
 	unsigned char buf[BUFBLOCK_SIZE];
 	int nSize = 0;
 	int nSendSize = 0;
@@ -294,46 +294,46 @@ connectState EpollFrame::SendData(NetConnect *pConnect, unsigned short uSize)
 	if ( 0 < nSendSize )
 	{
 		nSize = 0;
-		//Ò»´Î·¢ËÍ4096byte
-		if ( BUFBLOCK_SIZE < nSendSize )//1´Î·¢²»Íê£¬ÉèÖÃÎª¾ÍĞ÷×´Ì¬
+		//ä¸€æ¬¡å‘é€4096byte
+		if ( BUFBLOCK_SIZE < nSendSize )//1æ¬¡å‘ä¸å®Œï¼Œè®¾ç½®ä¸ºå°±ç»ªçŠ¶æ€
 		{
 			pConnect->m_sendBuffer.ReadData(buf, BUFBLOCK_SIZE, false);
 			nSize += BUFBLOCK_SIZE;
 			nSendSize -= BUFBLOCK_SIZE;
 			cs = ok;
 		}
-		else//1´Î¿É·¢Íê£¬ÉèÖÃÎªµÈ´ı×´Ì¬
+		else//1æ¬¡å¯å‘å®Œï¼Œè®¾ç½®ä¸ºç­‰å¾…çŠ¶æ€
 		{
 			pConnect->m_sendBuffer.ReadData(buf, nSendSize, false);
 			nSize += nSendSize;
 			nSendSize = 0;
 			cs = wait_send;
 		}
-		nFinishedSize = pConnect->GetSocket()->Send((char*)buf, nSize);//·¢ËÍ
+		nFinishedSize = pConnect->GetSocket()->Send((char*)buf, nSize);//å‘é€
 		if ( Socket::seError == nFinishedSize ) cs = unconnect;
 		else
 		{
-			pConnect->m_sendBuffer.ReadData(buf, nFinishedSize);//½«·¢ËÍ³É¹¦µÄÊı¾İ´Ó»º³åÇå³ı
-			if ( nFinishedSize < nSize ) //sockÒÑĞ´Âú£¬ÉèÖÃÎªµÈ´ı×´Ì¬
+			pConnect->m_sendBuffer.ReadData(buf, nFinishedSize);//å°†å‘é€æˆåŠŸçš„æ•°æ®ä»ç¼“å†²æ¸…é™¤
+			if ( nFinishedSize < nSize ) //sockå·²å†™æ»¡ï¼Œè®¾ç½®ä¸ºç­‰å¾…çŠ¶æ€
 			{
 				cs = wait_send;
 			}
 		}
 	}
-	if ( ok == cs || unconnect == cs ) return cs;//¾ÍĞ÷×´Ì¬»òÁ¬½Ó¹Ø±ÕÖ±½Ó·µ»Ø£¬Á¬½Ó¹Ø±Õ²»±Ø½áÊø·¢ËÍÁ÷³Ì£¬pNetConnect¶ÔÏó»á±»ÊÍ·Å£¬·¢ËÍÁ÷³Ì×Ô¶¯½áÊø
+	if ( ok == cs || unconnect == cs ) return cs;//å°±ç»ªçŠ¶æ€æˆ–è¿æ¥å…³é—­ç›´æ¥è¿”å›ï¼Œè¿æ¥å…³é—­ä¸å¿…ç»“æŸå‘é€æµç¨‹ï¼ŒpNetConnectå¯¹è±¡ä¼šè¢«é‡Šæ”¾ï¼Œå‘é€æµç¨‹è‡ªåŠ¨ç»“æŸ
 
-	//µÈ´ı×´Ì¬£¬½áÊø±¾´Î·¢ËÍ£¬²¢Æô¶¯ĞÂ·¢ËÍÁ÷³Ì
-	pConnect->SendEnd();//·¢ËÍ½áÊø
+	//ç­‰å¾…çŠ¶æ€ï¼Œç»“æŸæœ¬æ¬¡å‘é€ï¼Œå¹¶å¯åŠ¨æ–°å‘é€æµç¨‹
+	pConnect->SendEnd();//å‘é€ç»“æŸ
 	//////////////////////////////////////////////////////////////////////////
-	//¼ì²éÊÇ·ñĞèÒª¿ªÊ¼ĞÂµÄ·¢ËÍÁ÷³Ì
+	//æ£€æŸ¥æ˜¯å¦éœ€è¦å¼€å§‹æ–°çš„å‘é€æµç¨‹
 	if ( 0 >= pConnect->m_sendBuffer.GetLength() ) return cs;
 	/*
-		Íâ²¿·¢ËÍÏß³ÌÒÑÍê³É·¢ËÍ»º³åĞ´Èë
-		¶àÏß³Ì²¢·¢SendStart()£¬Ö»ÓĞÒ»¸ö³É¹¦
-		½áÂÛ£º²»»á³öÏÖ²¢·¢·¢ËÍ£¬Ò²²»»áÂ©Êı¾İ
+		å¤–éƒ¨å‘é€çº¿ç¨‹å·²å®Œæˆå‘é€ç¼“å†²å†™å…¥
+		å¤šçº¿ç¨‹å¹¶å‘SendStart()ï¼Œåªæœ‰ä¸€ä¸ªæˆåŠŸ
+		ç»“è®ºï¼šä¸ä¼šå‡ºç°å¹¶å‘å‘é€ï¼Œä¹Ÿä¸ä¼šæ¼æ•°æ®
 	*/
-	if ( !pConnect->SendStart() ) return cs;//ÒÑ¾­ÔÚ·¢ËÍ
-	//·¢ËÍÁ÷³Ì¿ªÊ¼
+	if ( !pConnect->SendStart() ) return cs;//å·²ç»åœ¨å‘é€
+	//å‘é€æµç¨‹å¼€å§‹
 	int64 connectId = pConnect->GetID();
 	if ( !m_pNetMonitor->AddSend( pConnect->GetSocket()->GetSocket(), (char*)&connectId, sizeof(int64) ) ) cs = unconnect;
 
