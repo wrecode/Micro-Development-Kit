@@ -12,6 +12,9 @@
 #include <map>
 #include <vector>
 #include <string>
+#ifndef WIN32
+#include <sys/epoll.h>
+#endif
 
 namespace mdk
 {
@@ -21,7 +24,7 @@ class NetHost;
 class NetEventMonitor;
 class NetServer;
 class MemoryPool;
-typedef std::map<SOCKET,NetConnect*> ConnectList;
+typedef std::map<int64,NetConnect*> ConnectList;
 /**
  * 服务器通信引擎类
  * 通信层对象类型
@@ -65,7 +68,6 @@ protected:
 	ConnectList m_connectList;
 	Mutex m_connectsMutex;//连接列表访问控制
 	int m_nHeartTime;//心跳间隔(S)
-	int m_nReconnectTime;//自动重连时间(S)
 	Thread m_mainThread;
 	NetEventMonitor *m_pNetMonitor;
 	ThreadPool m_ioThreads;//io线程池
@@ -73,23 +75,46 @@ protected:
 	ThreadPool m_workThreads;//业务线程池
 	int m_workThreadCount;//业务线程数量
 	NetServer *m_pNetServer;
-	std::map<int,SOCKET> m_serverPorts;//提供服务的端口,key端口，value状态监听这个端口的套接字
+	std::map<int,int> m_serverPorts;//提供服务的端口,key端口，value状态监听这个端口的套接字
 	Mutex m_listenMutex;//监听操作互斥
-	std::map<uint64,SOCKET> m_serIPList;//连接的外部服务地址列表
+
+	typedef struct SVR_CONNECT
+	{
+		enum ConnectState
+		{
+			unconnected = 0,
+				connectting = 1,
+				unconnectting = 2,
+				connected = 3,
+		};
+		int sock;				//句柄
+		uint64 addr;				//地址
+		int reConnectSecond;		//重链时间，小于0表示不重链
+		time_t lastConnect;			//上次尝试链接时间
+		ConnectState state;			//链接状态
+		void *pSvrInfo;				//服务信息
+#ifndef WIN32
+		bool inEpoll;				//在epoll中
+#endif
+	}SVR_CONNECT;
+	std::map<uint64,std::vector<SVR_CONNECT*> > m_keepIPList;//要保持连接的外部服务地址列表，断开会重连
 	Mutex m_serListMutex;//连接的服务地址列表互斥
+	Thread m_connectThread;
+	Signal m_wakeConnectThread;
 protected:
 	//网络事件监听线程
 	virtual void* NetMonitor( void* ) = 0;
 	void* RemoteCall NetMonitorTask( void* );
 	//响应连接事件,sock为新连接的套接字
-	bool OnConnect( SOCKET sock, bool isConnectServer );
+	bool OnConnect( int sock, int listenSock, SVR_CONNECT *pSvr = NULL );
 	void* RemoteCall ConnectWorker( NetConnect *pConnect );//业务层处理连接
 	//响应关闭事件，sock为关闭的套接字
-	void OnClose( SOCKET sock );
+	void OnClose( int64 connectId );
 	void NotifyOnClose(NetConnect *pConnect);//发出OnClose通知
 	void* RemoteCall CloseWorker( NetConnect *pConnect );//业务层处理关闭
+	void* RemoteCall ConnectFailed( NetEngine::SVR_CONNECT *pSvr );//业务层处理主动向外链接失败
 	//响应数据到达事件，sock为有数据到达的套接字
-	connectState OnData( SOCKET sock, char *pData, unsigned short uSize );
+	connectState OnData( int64 connectId, char *pData, unsigned short uSize );
 	/*
 		接收数据
 		返回连接状态
@@ -97,19 +122,17 @@ protected:
 	*/
 	virtual connectState RecvData( NetConnect *pConnect, char *pData, unsigned short uSize );
 	void* RemoteCall MsgWorker( NetConnect *pConnect );//业务层处理消息
-	connectState OnSend( SOCKET sock, unsigned short uSize );//响应发送事件
+	connectState OnSend( int64 connectId, unsigned short uSize );//响应发送事件
 	virtual connectState SendData(NetConnect *pConnect, unsigned short uSize);//发送数据
-	virtual SOCKET ListenPort(int port);//监听一个端口,返回创建的套接字
+	virtual int ListenPort(int port);//监听一个端口,返回创建的套接字
 	//向某组连接广播消息(业务层接口)
 	void BroadcastMsg( int *recvGroupIDs, int recvCount, char *msg, unsigned int msgsize, int *filterGroupIDs, int filterCount );
-	void SendMsg( int hostID, char *msg, unsigned int msgsize );//向某主机发送消息(业务层接口)
+	bool SendMsg( int64 hostID, char *msg, unsigned int msgsize );//向某主机发送消息(业务层接口)
 private:
 	//主线程
 	void* RemoteCall Main(void*);
 	//心跳线程
 	void HeartMonitor();
-	//断网重连
-	void ReConnectAll();
 	//关闭一个连接，将socket从监听器中删除
 	void CloseConnect( ConnectList::iterator it );
 
@@ -118,10 +141,24 @@ private:
 	bool ListenAll();//监听所有注册的端口
 	//////////////////////////////////////////////////////////////////////////
 	//与其它服务器交互
-	SOCKET ConnectOtherServer(const char* ip, int port);//连接一个服务,返回相关套接字
+	enum ConnectResult
+	{
+		success = 0,
+		waitReulst = 1,
+		cannotCreateSocket = 2,
+		invalidParam = 3,
+		faild = 4,
+	};
+	NetEngine::ConnectResult ConnectOtherServer(const char* ip, int port, int &svrSock);//异步连接一个服务,立刻成功返回true，否则返回false，等待select结果
 	bool ConnectAll();//连接所有注册的服务，已连接的会自动跳过
 	void SetServerClose(NetConnect *pConnect);//设置已连接的服务为关闭状态
 	const char* GetInitError();//取得启动错误信息
+	void* RemoteCall ConnectThread(void*);//异步链接线程
+	NetEngine::ConnectResult AsycConnect( int svrSock, const char *lpszHostAddress, unsigned short nHostPort );
+	bool EpollConnect( SVR_CONNECT **clientList, int clientCount );//clientCount个连接全部收到结果，返回true,否则返回false
+	bool SelectConnect( SVR_CONNECT **clientList, int clientCount );//clientCount个连接全部收到结果，返回true,否则返回false
+	bool ConnectIsFinished( SVR_CONNECT *pSvr, bool readable, bool sendable, int api, int errorCode );//链接已完成返回true（不表示成功，失败也是完成，外部不需要处理，成功失败在内部已处理），否则返回false
+	
 public:
 	/**
 	 * 构造函数,绑定服务器与通信策略
@@ -134,12 +171,15 @@ public:
 	void SetAverageConnectCount(int count);
 	//设置心跳时间
 	void SetHeartTime( int nSecond );
-	//设置自动重连时间
-	void SetReconnectTime( int nSecond );
 	//设置网络IO线程数量
 	void SetIOThreadCount(int nCount);
 	//设置工作线程数
 	void SetWorkThreadCount(int nCount);
+	//设置工作线程启动回调函数
+	void SetOnWorkStart( MethodPointer method, void *pObj, void *pParam );
+	void SetOnWorkStart( FuntionPointer fun, void *pParam );
+	//打开TCP_NODELAY
+	void OpenNoDelay();
 	/**
 	 * 开始
 	 * 成功返回true，失败返回false
@@ -150,15 +190,20 @@ public:
 	//等待停止
 	void WaitStop();
 	//关闭一个网络对象,通信层发现网络对象关闭连接时，派生类调用接口
-	void CloseConnect( SOCKET sock );
+	void CloseConnect( int64 connectId );
 	//监听一个端口
 	bool Listen( int port );
 	/*
-		连接一个服务
-		heartMsg是该服务器要求的心跳包报文
-		如果对方没有要求心跳，将len设置为0，
+	连接一个服务
+	reConnectTime < 0表示断开后不重新自动链接
 	*/
-	bool Connect(const char* ip, int port);
+	bool Connect(const char* ip, int port, void *pSvrInfo, int reConnectTime);
+#ifndef WIN32
+	int m_hEPoll;
+	epoll_event *m_events;
+#endif
+	int64 m_nextConnectId;
+	bool m_noDelay;//开启TCP_NODELAY
 };
 
 }  // namespace mdk

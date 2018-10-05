@@ -33,7 +33,7 @@ public:
 	friend class IOCPFrame;
 	friend class EpollFrame;
 public:
-	NetConnect(SOCKET sock, bool bIsServer, NetEventMonitor *pNetMonitor, NetEngine *pEngine, MemoryPool *pMemoryPool);
+	NetConnect(int sock, int listenSock, bool bIsServer, NetEventMonitor *pNetMonitor, NetEngine *pEngine, MemoryPool *pMemoryPool);
 	virtual ~NetConnect();
 
 public:
@@ -55,7 +55,8 @@ public:
 	 *	另外也统一了IOCP与EPOLL的数据写入方式
 	 */
 
-	int GetID();//取得ID
+	void SetID( int64 connectId );
+	int64 GetID();//取得ID
 	Socket* GetSocket();//取得套接字
 	bool IsReadAble();//可读
 	uint32 GetLength();//取得数据长度
@@ -90,7 +91,10 @@ public:
 	void SetData( HostData *pData, bool autoFree );
 	//取得客户数据
 	HostData* GetData();
-
+	//设置服务信息
+	void SetSvrInfo(void *pData);
+	//取服务信息
+	void* GetSvrInfo();
 private:
 	int m_useCount;//访问计数
 	IOBuffer m_recvBuffer;//接收缓冲
@@ -107,7 +111,7 @@ private:
 	Socket m_socket;//socket指针，用于调用网络操作
 	NetEventMonitor *m_pNetMonitor;//底层投递操作接口
 	NetEngine *m_pEngine;//用于关闭连接
-	int m_id;
+	int64 m_id;
 	NetHost m_host;
 	time_t m_tLastHeart;//最后一次收到心跳时间
 	bool m_bIsServer;//主机类型服务器
@@ -116,6 +120,7 @@ private:
 	HostData *m_pHostData;//主机数据
 	mdk::Mutex m_mutexData;//主机数据锁
 	bool m_autoFreeData;
+	void *m_pSvrInfo;//服务信息，当NetConnect代表一个服务器时有效
 
 };
 

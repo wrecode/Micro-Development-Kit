@@ -10,8 +10,20 @@
 #define MDK_SOCKET_H
 
 #ifdef WIN32
+
 #pragma warning(disable:4996)
-#include <windows.h>
+#define SOCK_STREAM     1               /* stream socket */
+#define SOCK_DGRAM      2               /* datagram socket */
+#define SOL_SOCKET      0xffff          /* options for socket level */
+#define SOMAXCONN       5
+#define INVALID_SOCKET  -1
+
+/*
+ * Socket address, internet style.
+ */
+struct sockaddr_in;
+
+
 //#include <winsock2.h>  
 //#include <mswsock.h>
 //#define SOCK_STREAM 1
@@ -19,7 +31,7 @@
 //#define SOL_SOCKET 0xffff
 //#define SOMAXCONN       5
 
-//typedef unsigned int SOCKET;
+//typedef unsigned int int;
 //struct sockaddr_in;
 //{
 //};
@@ -41,7 +53,6 @@
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
 #define closesocket close
-typedef int SOCKET;
 #endif
 
 
@@ -67,7 +78,7 @@ public:
 	};
 
 	Socket();
-	Socket( SOCKET hSocket, protocol nProtocolType );
+	Socket( int hSocket, protocol nProtocolType );
 	virtual ~Socket();
 
 public:
@@ -75,7 +86,7 @@ public:
 	//转换失败返回""
 	static char* HostName2IP( char *hostname );
 	//取得套接字句柄
-	SOCKET GetSocket();
+	int GetSocket();
 	/*
 		功能：一致性初始化，m_hSocket来至于外部创建，还是内部创建
 		参数：
@@ -100,20 +111,20 @@ public:
 	/*
 		功能：调用库函数send发送数据
 		参数：
-			lpBuf	const void*	[In]	发送的数据
-			nBufLen	int		[In]	数据长度
-			nFlags	int		[In]	An indicator specifying the way in which the call is made
-		返回值：成功实际发送的字节数，失败返回-1
+		lpBuf	const void*	[In]	发送的数据
+		nBufLen	int		[In]	数据长度
+		nFlags	int		[In]	An indicator specifying the way in which the call is made
+		返回值：成功实际发送的字节数，失败返回小于0
 	*/
 	int Send( const void* lpBuf, int nBufLen, int nFlags = 0 );
 	/*
 		功能：接收数据
 		参数：
-			lpBuf		void*		[Out]	保存接收的数据
-			nBufLen		int			[Out]	收到数据的长度
-			lSecond		long		[In]	超时时间秒
-			lMinSecond	long		[In]	超时时间毫秒
-		返回值：实际接收到的字节数，超时返回-1
+		lpBuf		void*		[Out]	保存接收的数据
+		nBufLen		__int32		[Out]	收到数据的长度
+		lSecond		long		[In]	超时时间秒
+		lMinSecond	long		[In]	超时时间毫秒
+		返回值：实际接收到的字节数，超时返回-2，断开连接返回-1，其它错误返回-3
 	*/
 	int Receive( void* lpBuf, int nBufLen, bool bCheckDataLength = false, long lSecond = 0, long lMinSecond = 0 );
 
@@ -191,6 +202,21 @@ public:
 		返回值：成功返回TRUE，否则返回FALSE
 	*/
 	bool SetSockOpt( int nOptionName, const void* lpOptionValue, int nOptionLen, int nLevel = SOL_SOCKET );
+	//开启TCP_NODELAY设置,对于要频繁发送小数据的连接需要设置此设置提高吞吐能力
+	bool SetNoDelay( bool yes );
+	static bool SetNoDelay( int sock, bool yes );
+	//设置发送缓冲大小
+	bool SetSendBufSize( int buffsize );
+	static bool SetSendBufSize( int sock, int buffsize );
+	//设置接收缓冲大小
+	bool SetRecvBufSize( int buffsize );
+	static bool SetRecvBufSize( int sock, int buffsize );
+	//设置发送超时
+	bool SetSendTimeout( long sec, long usec );
+	static bool SetSendTimeout( int sock, long sec, long usec );
+	//设置接收超时
+	bool SetRecvTimeout( long sec, long usec );
+	static bool SetRecvTimeout( int sock, long sec, long usec );
 
 	/*
 		功能：Socket初始化
@@ -206,7 +232,7 @@ public:
 	
 	//针对IOCP，可使用GetPeerName取地址信息
 	//※只能在Connect之后调用
-	static bool InitForIOCP( SOCKET hSocket );
+	static bool InitForIOCP( int hSocket, int listenSock );
 
 	/*
 		功能：绑定一个socket句柄，让该类对象在这个句柄上进行操作
@@ -214,14 +240,14 @@ public:
 			傻瓜式绑定，不管类对象之前是否已经绑定了其它套接字，首先会调用傻瓜式函数close关闭连接，然后在绑定新的套接字，
 			如果没有实现调用Detach解除旧绑定，那么旧的绑定sock将丢失
 		参数：
-			hSocket	SOCKET	[In]	要绑定sock句柄
+			hSocket	int	[In]	要绑定sock句柄
 	*/
-	void Attach( SOCKET hSocket );
+	void Attach( int hSocket );
 	/*
 		功能：解除绑定，返回绑定的socket句柄
 		返回值：已绑定的socket句柄，可能是一个INVALID_SOCKET，说明之前没有任何绑定
 	*/
-	SOCKET Detach();
+	int Detach();
 
 	//初始化对方地址
 	//※只能在Connect之后调用
@@ -239,8 +265,6 @@ protected:
 		返回值：超时返回TRUE，否则返回FALSE
 	*/
 	bool TimeOut( long lSecond, long lMinSecond );
-	//功能：等待数据
-	bool WaitData();
 	/*
 		功能：从sockaddr结构转换成常见类型表示的地址
 		参数：
@@ -248,7 +272,7 @@ protected:
 		strIP		string			[Out]	ip
 		nPort		int				[Out]	端口
 	*/
-	void GetAddress( const sockaddr_in &sockAddr, std::string &strIP, int &nPort );
+	void GetAddress( const sockaddr_in *sockAddr, std::string &strIP, int &nPort );
 	/*
 		功能：服务端函数，绑定监听的端口与IP
 		参数：
@@ -267,10 +291,11 @@ protected:
 		
 public:
 private:
-	SOCKET m_hSocket;//sock句柄
+	int m_hSocket;//sock句柄
 	bool m_bBlock;//阻塞标记
 	bool m_bOpened;//打开状态
-	sockaddr_in m_sockAddr;
+	//为了不包含windows.h,定义一个绝对大于sockaddr_in的buffer
+	char m_sockAddr[64];//sockaddr_in
 	std::string m_strWanIP;
 	int m_nWanPort;
 	std::string m_strLocalIP;

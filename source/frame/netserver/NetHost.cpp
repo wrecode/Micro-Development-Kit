@@ -56,7 +56,7 @@ bool NetHost::IsServer()
 	return m_pConnect->IsServer();
 }
 
-int NetHost::ID()
+int64 NetHost::ID()
 {
 	if ( NULL == m_pConnect ) return -1;
 	return m_pConnect->GetID();
@@ -97,4 +97,8 @@ HostData* NetHost::GetData()
 	return m_pConnect->GetData();
 }
 
+void* NetHost::GetSvrInfo()
+{
+	return m_pConnect->GetSvrInfo();
+}
 }  // namespace mdk

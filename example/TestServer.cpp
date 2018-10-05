@@ -17,9 +17,9 @@ TestServer::TestServer()
 	SetIOThreadCount(4);//设置网络IO线程数量
 	SetWorkThreadCount(4);//设置工作线程数
 	Listen(8888);
-	Listen(6666);
-	Listen(9999);
-//	Connect("127.0.0.1",8888);//连接自身，未测试，不建议这么做
+//	Listen(6666);
+//	Listen(9999);
+//	Connect("127.0.0.1", 10086, 5);//连接自身，未测试，不建议这么做
 }
 
 TestServer::~TestServer()

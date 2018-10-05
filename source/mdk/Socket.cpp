@@ -5,12 +5,14 @@
 #include "../../include/mdk/Socket.h"
 
 #ifdef WIN32
+#include <windows.h>
 #pragma comment ( lib, "ws2_32.lib" )
 #else
 #include <netdb.h>
+#include <netinet/tcp.h>
 #endif
 #include <stdio.h>
-using namespace std;
+
 namespace mdk
 {
 
@@ -21,7 +23,7 @@ Socket::Socket()
 	m_bOpened = false;//未打开状态
 }
 
-Socket::Socket( SOCKET hSocket, protocol nProtocolType )
+Socket::Socket( int hSocket, protocol nProtocolType )
 {
 	m_hSocket = hSocket;
 	m_bBlock = true;
@@ -73,7 +75,7 @@ void Socket::SocketDestory()
 #endif
 }
 
-void Socket::GetLastErrorMsg( string &strError )
+void Socket::GetLastErrorMsg( std::string &strError )
 {
 	char strErr[1024];
 #ifdef WIN32
@@ -98,12 +100,12 @@ void Socket::GetLastErrorMsg( string &strError )
 #endif
 }
 
-bool Socket::InitForIOCP( SOCKET hSocket )
+bool Socket::InitForIOCP( int hSocket, int listenSock )
 {
 #ifdef WIN32
 	return 0 == setsockopt( hSocket,
 		SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT,
-		(char *)&(hSocket), sizeof(hSocket) );
+		(char *)&(listenSock), sizeof(listenSock) );
 #else
 	return true;
 #endif
@@ -111,12 +113,12 @@ bool Socket::InitForIOCP( SOCKET hSocket )
 
 
 //取得套接字句柄
-SOCKET Socket::GetSocket()
+int Socket::GetSocket()
 {
 	return m_hSocket;
 }
 
-void Socket::GetPeerAddress( string& strWanIP, int& nWanPort )
+void Socket::GetPeerAddress( std::string& strWanIP, int& nWanPort )
 { 
 	nWanPort = m_nWanPort;
 	strWanIP = m_strWanIP;
@@ -138,7 +140,7 @@ bool Socket::InitPeerAddress()
 	return true;
 }
 
-void Socket::GetLocalAddress( string& strWanIP, int& nWanPort )
+void Socket::GetLocalAddress( std::string& strWanIP, int& nWanPort )
 { 
 	nWanPort = m_nLocalPort;
 	strWanIP = m_strLocalIP;
@@ -206,24 +208,15 @@ bool Socket::Connect( const char *lpszHostAddress, unsigned short nHostPort, lon
 	sockAddr.sin_family = AF_INET;
 	sockAddr.sin_addr.s_addr = inet_addr(ip);
 	sockAddr.sin_port = htons( nHostPort );
-
-	char opt[256];
-	socklen_t optSize;
-	getsockopt(m_hSocket, SOL_SOCKET, SO_SNDTIMEO, opt, &optSize);
-
-	struct timeval timeo = {lSecond, 0};
-	socklen_t len = sizeof(timeo);
-	timeo.tv_sec = lSecond;
-	setsockopt(m_hSocket, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeo, len);
-
+	SetSendTimeout(lSecond, 0);
 	if ( SOCKET_ERROR != connect(m_hSocket, (sockaddr*)&sockAddr, sizeof(sockAddr)) )
 	{
-		setsockopt(m_hSocket, SOL_SOCKET, SO_SNDTIMEO, opt, optSize);
+		SetSendTimeout(0, 0);
 		InitPeerAddress();
 		InitLocalAddress();
 		return true;
 	}
-	setsockopt(m_hSocket, SOL_SOCKET, SO_SNDTIMEO, opt, optSize);
+	SetSendTimeout(0, 0);
 
 	return false;
 }
@@ -263,9 +256,9 @@ void Socket::Close()
 		傻瓜式绑定，不管类对象之前是否已经绑定了其它套接字，首先会调用傻瓜式函数close关闭连接，然后在绑定新的套接字，
 		如果没有实现调用Detach解除旧绑定，那么旧的绑定sock将丢失
 	参数：
-		hSocket	SOCKET	[In]	要绑定sock句柄
+		hSocket	int	[In]	要绑定sock句柄
 */
-void Socket::Attach(SOCKET hSocket)
+void Socket::Attach(int hSocket)
 {
 	m_hSocket = hSocket;
 	m_bBlock = true;
@@ -278,9 +271,9 @@ void Socket::Attach(SOCKET hSocket)
 	功能：解除绑定，返回绑定的socket句柄
 	返回值：已绑定的socket句柄，可能是一个INVALID_SOCKET，说明之前没有任何绑定
 */
-SOCKET Socket::Detach()
+int Socket::Detach()
 {
-	SOCKET hSocket = m_hSocket;
+	int hSocket = m_hSocket;
 	m_hSocket = INVALID_SOCKET;
 	m_bBlock = true;
 	m_bOpened = false;//未打开状态
@@ -355,18 +348,20 @@ int Socket::Send( const void* lpBuf, int nBufLen, int nFlags )
 */
 bool Socket::Bind( unsigned short nPort, char *strIP )
 {
-	memset(&m_sockAddr,0,sizeof(m_sockAddr));
-	m_sockAddr.sin_family = AF_INET;
-	if ( NULL == strIP ) m_sockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	sockaddr_in sockAddr;
+	memset(m_sockAddr,0,sizeof(sockAddr));
+	sockaddr_in *pAddr = (sockaddr_in*)m_sockAddr;
+	pAddr->sin_family = AF_INET;
+	if ( NULL == strIP ) pAddr->sin_addr.s_addr = htonl(INADDR_ANY);
 	else
 	{
 		unsigned long lResult = inet_addr( strIP );
 		if ( lResult == INADDR_NONE ) return false;
-		m_sockAddr.sin_addr.s_addr = lResult;
+		pAddr->sin_addr.s_addr = lResult;
 	}
-	m_sockAddr.sin_port = htons((unsigned short)nPort);
+	pAddr->sin_port = htons((unsigned short)nPort);
 
-	return (SOCKET_ERROR != bind(m_hSocket, (sockaddr*)&m_sockAddr, sizeof(m_sockAddr)));
+	return (SOCKET_ERROR != bind(m_hSocket, (sockaddr*)pAddr, sizeof(sockAddr)));
 }
 
 /*
@@ -467,30 +462,6 @@ bool Socket::TimeOut( long lSecond, long lMinSecond )
 	return false;
 }
 
-//功能：等待数据
-bool Socket::WaitData()
-{
-	int nSelectRet;
-#ifdef WIN32
-	FD_SET readfds = { 1, m_hSocket };
-	nSelectRet=::select( 0, &readfds, NULL, NULL, NULL ); //检查可读状态
-#else
-	fd_set readfds;
-	FD_ZERO(&readfds);
-	FD_SET(m_hSocket, &readfds);
-	nSelectRet=::select(m_hSocket+1, &readfds, NULL, NULL, NULL); //检查可读状态
-#endif
-	if ( SOCKET_ERROR == nSelectRet ) 
-	{
-		return false;
-	}
-	if ( 0 == nSelectRet ) //超时发生，无可读数据 
-	{
-		return false;
-	}
-	return true;
-}
-
 /*
 	功能：阻塞方式设置
 	参数：
@@ -555,7 +526,7 @@ int Socket::SendTo( const char *strIP, int nPort, const void* lpBuf, int nBufLen
 		lMinSecond	long		[In]	超时时间毫秒
 		返回值：实际接收到的字节数，超时返回0
 */
-int Socket::ReceiveFrom( char* lpBuf, int nBufLen, string &strFromIP, int &nFromPort, bool bCheckDataLength, long lSecond, long lMinSecond )
+int Socket::ReceiveFrom( char* lpBuf, int nBufLen, std::string &strFromIP, int &nFromPort, bool bCheckDataLength, long lSecond, long lMinSecond )
 {
 	strFromIP = "";
 	nFromPort = -1;
@@ -570,7 +541,7 @@ int Socket::ReceiveFrom( char* lpBuf, int nBufLen, string &strFromIP, int &nFrom
 		if ( TimeOut( lSecond, lMinSecond ) ) return seTimeOut;
 		if ( bCheckDataLength )nFlag = MSG_PEEK;
 		nResult = recvfrom(m_hSocket, lpBuf, nBufLen, nFlag, (sockaddr*)&sockAddr, &nAddrLen);
-		if ( nAddrLen > 0 ) GetAddress(sockAddr, strFromIP, nFromPort);
+		if ( nAddrLen > 0 ) GetAddress(&sockAddr, strFromIP, nFromPort);
 		if ( SOCKET_ERROR == nResult ) //socket发生异常
 		{
 #ifndef WIN32
@@ -595,10 +566,10 @@ int Socket::ReceiveFrom( char* lpBuf, int nBufLen, string &strFromIP, int &nFrom
 	return nResult;
 }
 
-void Socket::GetAddress( const sockaddr_in &sockAddr, string &strIP, int &nPort )
+void Socket::GetAddress( const sockaddr_in *sockAddr, std::string &strIP, int &nPort )
 {
-	nPort = ntohs(sockAddr.sin_port);
-	strIP = inet_ntoa(sockAddr.sin_addr);
+	nPort = ntohs(sockAddr->sin_port);
+	strIP = inet_ntoa(sockAddr->sin_addr);
 }
 
 char* Socket::HostName2IP( char *hostname )
@@ -617,5 +588,116 @@ char* Socket::HostName2IP( char *hostname )
 
 	return "";
 }
+
+bool Socket::SetNoDelay( bool yes )
+{
+	int opt = yes?1:0;
+	if ( -1 == setsockopt(m_hSocket, IPPROTO_TCP, TCP_NODELAY, (char*)&opt, sizeof(opt)) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetNoDelay( int sock, bool yes )
+{
+	int opt = yes?1:0;
+	if ( -1 == setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char*)&opt, sizeof(opt)) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetSendBufSize( int buffsize )
+{
+	if ( -1 == setsockopt(m_hSocket, SOL_SOCKET, SO_SNDBUF, (char*)&buffsize, sizeof(buffsize)) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetSendBufSize( int sock, int buffsize )
+{
+	if ( -1 == setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char*)&buffsize, sizeof(buffsize)) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetRecvBufSize( int buffsize )
+{
+	if ( -1 == setsockopt(m_hSocket, SOL_SOCKET, SO_RCVBUF, (char*)&buffsize, sizeof(buffsize)) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetRecvBufSize( int sock, int buffsize )
+{
+	if ( -1 == setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&buffsize, sizeof(buffsize)) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetSendTimeout( long sec, long usec )
+{
+	struct timeval timeo = {sec, usec};
+	socklen_t len = sizeof(timeo);
+	if ( -1 == setsockopt(m_hSocket, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeo, len) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetSendTimeout( int sock, long sec, long usec )
+{
+	struct timeval timeo = {sec, usec};
+	socklen_t len = sizeof(timeo);
+	if ( -1 == setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeo, len) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetRecvTimeout( long sec, long usec )
+{
+	struct timeval timeo = {sec, usec};
+	socklen_t len = sizeof(timeo);
+	if ( -1 == setsockopt(m_hSocket, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeo, len) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool Socket::SetRecvTimeout( int sock, long sec, long usec )
+{
+	struct timeval timeo = {sec, usec};
+	socklen_t len = sizeof(timeo);
+	if ( -1 == setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeo, len) )
+	{
+		return false;
+	}
+
+	return true;
+}
+
 
 }//namespace mdk

@@ -38,9 +38,10 @@ namespace mdk
 	//maxCpu可能的最大cpu数，如果检测出cpu数量大于此值，则表示检测有误，将返回defaultCpuNumber
 	//defaultCpuNumber默认cpu数量，当检测出错时，将认为cpu数量为此值
 	unsigned int GetCUPNumber( int maxCpu, int defaultCpuNumber );
-	unsigned int CurThreadId();//当前线程id
+	uint64 CurThreadId();//当前线程id
 	time_t mdk_Date();//返回0时0分0秒的当前日期
-	bool GetExeDir( char *exeDir, int size );//取得可执行程序位置
+	bool GetExeDir( char *exeDir, int size );//取得可执行程序位置,linux不带斜杠win下带斜杠
+	mdk::uint64 MillTime();//毫秒级当前时间
 }
 
 #endif // !defined MDK_MAPI_H 

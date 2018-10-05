@@ -6,7 +6,6 @@
 #define MDK_STNETCONNECT_H
 
 #include "STNetHost.h"
-#include "../../../include/mdk/Lock.h"
 #include "../../../include/mdk/IOBuffer.h"
 #include "../../../include/mdk/Socket.h"
 
@@ -27,7 +26,7 @@ class STNetConnect
 	friend class STNetEngine;
 	friend class STNetHost;
 public:
-	STNetConnect(SOCKET sock, bool bIsServer, NetEventMonitor *pNetMonitor, STNetEngine *pEngine, MemoryPool *pMemoryPool);
+	STNetConnect(int sock, int listenSock, bool bIsServer, NetEventMonitor *pNetMonitor, STNetEngine *pEngine, MemoryPool *pMemoryPool);
 	virtual ~STNetConnect();
 
 	/*
@@ -78,7 +77,13 @@ public:
 		服务器地址
 	 */
 	void GetServerAddress( std::string &ip, int &port );
-	
+	//设置服务信息
+	void SetSvrInfo(void *pData);
+	//取服务信息
+	void* GetSvrInfo();
+	bool AddEpollSend();
+	bool AddEpollRecv();
+private:	
 	int m_useCount;//访问计数
 	IOBuffer m_recvBuffer;//接收缓冲
 	int m_nReadCount;//正在进行读接收缓冲的线程数
@@ -89,7 +94,6 @@ public:
 	IOBuffer m_sendBuffer;//发送缓冲
 	int m_nSendCount;//正在进行发送的线程数
 	bool m_bSendAble;//io缓冲中有数据需要发送
-	Mutex m_sendMutex;//发送操作并发锁
 	
 	Socket m_socket;//socket指针，用于调用网络操作
 	NetEventMonitor *m_pNetMonitor;//底层投递操作接口
@@ -100,7 +104,9 @@ public:
 	bool m_bIsServer;//主机类型服务器
 	std::map<int,int> m_groups;//所属分组
 	MemoryPool *m_pMemoryPool;
-	
+	void *m_pSvrInfo;//服务信息，当NetConnect代表一个服务器时有效
+	bool m_monitorSend;//监听发送
+	bool m_monitorRecv;//监听接收
 };
 
 }

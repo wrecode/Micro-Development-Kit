@@ -13,16 +13,18 @@ STNetHost::STNetHost()
 }
 
 STNetHost::STNetHost(const STNetHost& obj)
+:m_pConnect(NULL)
 {
-	AtomAdd(&obj.m_pConnect->m_useCount, 1);
-	m_pConnect = obj.m_pConnect;
+	*this = obj;
+//	AtomAdd(&obj.m_pConnect->m_useCount, 1);
+//	m_pConnect = obj.m_pConnect;
 }
 
 STNetHost& STNetHost::operator=(const STNetHost& obj)
 {
 	if ( m_pConnect == obj.m_pConnect ) return *this;
 	if ( NULL != m_pConnect ) m_pConnect->Release();
-	AtomAdd(&obj.m_pConnect->m_useCount, 1);
+	if ( NULL != obj.m_pConnect ) AtomAdd(&obj.m_pConnect->m_useCount, 1);
 	m_pConnect = obj.m_pConnect;
 	return *this;
 }
@@ -81,6 +83,11 @@ void STNetHost::GetAddress( string &ip, int &port )
 {
 	m_pConnect->GetAddress(ip, port);
 	return;
+}
+
+void* STNetHost::GetSvrInfo()
+{
+	return m_pConnect->GetSvrInfo();
 }
 
 }  // namespace mdk
